@@ -26,17 +26,14 @@ void opt2_kernel(float *A, float *B, float *C, int M, int K, int N) {
     float b00;
     for (int ii = 0; ii < M; ii+=32) {
         // trans A
-        *(float4*)&block_A[threadIdx.y][threadIdx.x*4] = 
-            *(float4)&A[idx_x*K + threadIdx.y]
-
-        // block_A[threadIdx.y][threadIdx.x*4] = 
-        //     A[idx_x*K + threadIdx.y+ii];
-        // block_A[threadIdx.y][threadIdx.x*4+1] = 
-        //     A[idx_x*K + threadIdx.y+ii + K];
-        // block_A[threadIdx.y][threadIdx.x*4+2] = 
-        //     A[idx_x*K + threadIdx.y+ii + 2 * K];
-        // block_A[threadIdx.y][threadIdx.x*4+3] = 
-        //     A[idx_x*K + threadIdx.y+ii + 3 * K];
+        block_A[threadIdx.y][threadIdx.x*4] = 
+            A[idx_x*K + threadIdx.y+ii];
+        block_A[threadIdx.y][threadIdx.x*4+1] = 
+            A[idx_x*K + threadIdx.y+ii + K];
+        block_A[threadIdx.y][threadIdx.x*4+2] = 
+            A[idx_x*K + threadIdx.y+ii + 2 * K];
+        block_A[threadIdx.y][threadIdx.x*4+3] = 
+            A[idx_x*K + threadIdx.y+ii + 3 * K];
         // No Trans B
         block_B[threadIdx.x*4][threadIdx.y] = 
             B[idx_y + (ii + threadIdx.x*4) * N];
@@ -73,7 +70,7 @@ float opt2(float *A, float *B, float *C, int iter) {
     dim3 block(TPBX, TPBY);
     dim3 grid(MM/TPBX/4, NN/TPBY);
     for (int ii = 0; ii < iter; ii++) {
-        opt1_kernel<<<grid, block>>>(A, B, C, MM, KK, NN);
+        opt2_kernel<<<grid, block>>>(A, B, C, MM, KK, NN);
     }
     cudaDeviceSynchronize();
     cudaEventRecord(stop);
