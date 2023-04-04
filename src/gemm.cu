@@ -1,5 +1,6 @@
 #include <cuda_runtime.h>
 #include "gemm.h"
+#include <iostream>
 
 float gemm(float *A, float *B, float *C, int iter, int opt) {
     float *dev_A, *dev_B, *dev_C;
@@ -11,13 +12,18 @@ float gemm(float *A, float *B, float *C, int iter, int opt) {
     float time_elapsed = 0.0;
     switch(opt) {
         case 0:
-            opt0(dev_A, dev_B, dev_C, iter);
+            time_elapsed = opt0(dev_A, dev_B, dev_C, iter);
             break;
         default:
             time_elapsed = baseline(dev_A, dev_B, dev_C, iter);
             break;
     }
     cudaMemcpy(C, dev_C, sizeof(float) * MM * NN, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    auto err = cudaGetLastError();
+    if (err) {
+        std::cout << "[ERROR] Something error when execuate kernel, err = " << err << std::endl;
+    }
 
     return time_elapsed;
 }

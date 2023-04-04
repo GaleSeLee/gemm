@@ -28,7 +28,6 @@ add_executable(${PROJECT_BIN_NAME}
 
 target_link_libraries(
     ${PROJECT_BIN_NAME}
-    cudart
     mygemm
 )
 

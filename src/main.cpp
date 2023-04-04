@@ -4,6 +4,8 @@
 #include <tuple>
 #include <cmath>
 #include <algorithm>
+#include <stdlib.h>
+#include <sys/time.h>
 
 #include "gemm.h"
 
@@ -19,13 +21,17 @@ int iter_num = 10;
 void init(float *A, float *B) {
     for(int ii = 0; ii < MM; ii++) {
         for (int jj = 0; jj < KK; jj++) {
-            A[ii*KK+jj] = (MM-ii) * 1.f/MM + (KK-jj) * 1.f/KK;
+            float tmp = (float)(rand() % 5) + 0.01 * (rand() % 5);
+            tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);
+            A[ii*KK+jj] = tmp;
         }
     }
 
     for(int ii = 0; ii < KK; ii++) {
         for (int jj = 0; jj < NN; jj++) {
-            B[ii*NN+jj] = ii*1.f/KK + jj*1.f/NN;
+            float tmp = (float)(rand() % 5) + 0.01 * (rand() % 5);
+            tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);
+            B[ii*NN+jj] = tmp;
         }
     }
 }
@@ -34,7 +40,7 @@ void init(float *A, float *B) {
 tuple<bool, int, int> check_ret(float *C, float *C_ref) {
     for (int ii = 0; ii < MM; ii++) {
         for (int jj = 0; jj < NN; jj++) {
-            if (abs(C[ii*NN+jj] - C_ref[ii*NN+jj]) / C[ii*NN+jj] > 1e-5) {
+            if (fabs(C[ii*NN+jj] - C_ref[ii*NN+jj]) > 1e-2) {
                 return make_tuple(false, ii, jj);
             }
         }
@@ -89,6 +95,6 @@ int main(int argc, char *argv[]) {
     std::cout << "[INFO] GFLOPs : " << 1/ 1e9 * MM * NN * KK / time_cost_ms * 2000 * iter_num
               << " GFLOPS" << std::endl;
 
-    std::cout << "[INFO] peak : " <<  1/ 1e9 * MM * NN * KK / time_cost_ms / 10.07 * 200 *iter_num << "%" << std::endl;
+    std::cout << "[INFO] peak : " <<  1/ 1e9 * MM * NN * KK / time_cost_ms / 6.451 * 200 *iter_num << "%" << std::endl;
     
 }

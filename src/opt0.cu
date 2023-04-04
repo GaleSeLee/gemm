@@ -1,3 +1,6 @@
+// 2060
+// 344.62
+// 5.34212%
 #include "gemm.h"
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -7,15 +10,29 @@
 #define TPBY 32
 
 __global__
-void baseline_kernel(float *A, float *B, float *C, int M, int K, int N) {
+void opt0_kernel(float *A, float *B, float *C, int M, int K, int N) {
     int idx_x = blockIdx.x * blockDim.x + threadIdx.x;
     int idx_y = blockIdx.y * blockDim.y + threadIdx.y;
     int idx = idx_x * NN + idx_y;
 
-    C[idx] = 0;
-    for (int kk = 0; kk < K; kk++) {
-        C[idx] += A[idx_x*K + kk] * B[idx_y + kk*N];
+    __shared__ float block_A[32][32];
+    __shared__ float block_B[32][32];
+
+    float tmp = 0.0f;
+    for (int ii = 0; ii < M; ii+=32) {
+        // trans A
+        block_A[threadIdx.y][threadIdx.x] = 
+            A[idx_x*K + threadIdx.y+ii];
+        // No Trans B
+        block_B[threadIdx.x][threadIdx.y] = 
+            B[idx_y + (ii + threadIdx.x) * N];
+        __syncthreads();
+        for (int kk = 0; kk < 32; kk++) {
+            tmp += block_A[kk][threadIdx.x] * block_B[kk][threadIdx.y];
+        }
+        __syncthreads();
     }
+    C[idx] = tmp;
 }
 
 float opt0(float *A, float *B, float *C, int iter) {
@@ -28,7 +45,7 @@ float opt0(float *A, float *B, float *C, int iter) {
     dim3 block(TPBX, TPBY);
     dim3 grid(MM/TPBX, NN/TPBY);
     for (int ii = 0; ii < iter; ii++) {
-        baseline_kernel<<<grid, block>>>(A, B, C, MM, KK, NN);
+        opt0_kernel<<<grid, block>>>(A, B, C, MM, KK, NN);
     }
     cudaDeviceSynchronize();
     cudaEventRecord(stop);

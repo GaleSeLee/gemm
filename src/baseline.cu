@@ -1,3 +1,6 @@
+// 2060
+// 25.2553
+// 0.391494%
 #include "gemm.h"
 #include <cuda_runtime.h>
 #include <stdio.h>
