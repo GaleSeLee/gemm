@@ -1,6 +1,6 @@
 // 2060
-// 344.62
-// 5.34212%
+// 417.715
+// 6.47519
 #include "gemm.h"
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -15,8 +15,9 @@ void opt0_kernel(float *A, float *B, float *C, int M, int K, int N) {
     int idx_y = blockIdx.y * blockDim.y + threadIdx.y;
     int idx = idx_x * NN + idx_y;
 
-    __shared__ float block_A[32][32];
-    __shared__ float block_B[32][32];
+    // 33 for reducing bank conflict
+    __shared__ float block_A[32][33];
+    __shared__ float block_B[32][33];
 
     float tmp = 0.0f;
     for (int ii = 0; ii < M; ii+=32) {
