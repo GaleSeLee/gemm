@@ -11,6 +11,7 @@ float gemm(float *A, float *B, float *C, int iter, int opt) {
     float time_elapsed = 0.0;
     switch(opt) {
         case 0:
+            opt0(dev_A, dev_B, dev_C, iter);
             break;
         default:
             time_elapsed = baseline(dev_A, dev_B, dev_C, iter);

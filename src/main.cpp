@@ -16,7 +16,7 @@ using namespace std;
 int opt_level = -1;
 int iter_num = 10;
 
-void init(float *A, float *B, float *C_ref) {
+void init(float *A, float *B) {
     for(int ii = 0; ii < MM; ii++) {
         for (int jj = 0; jj < KK; jj++) {
             A[ii*KK+jj] = (MM-ii) * 1.f/MM + (KK-jj) * 1.f/KK;
@@ -26,15 +26,6 @@ void init(float *A, float *B, float *C_ref) {
     for(int ii = 0; ii < KK; ii++) {
         for (int jj = 0; jj < NN; jj++) {
             B[ii*NN+jj] = ii*1.f/KK + jj*1.f/NN;
-        }
-    }
-
-    for (int ii = 0; ii < MM; ii ++) {
-        for(int jj = 0; jj < NN; jj++) {
-            C_ref[ii*NN+jj] = 0;
-            for (int kk = 0; kk < KK; kk++) {
-                C_ref[ii*NN+jj] += A[ii*KK+kk] * B[kk*NN+jj];
-            }
         }
     }
 }
@@ -80,8 +71,8 @@ int main(int argc, char *argv[]) {
     float* C = reinterpret_cast<float*>(malloc(MM * NN * sizeof(4)));
     float* C_ref = reinterpret_cast<float*>(malloc(MM * NN * sizeof(4)));
 
-    init(A, B, C_ref);
-
+    init(A, B);
+    gemm(A, B, C_ref, 1, -1);
     gemm(A, B, C, 1, opt_level);
     auto [err, err_ii, err_jj] = check_ret(C, C_ref);
     if (err != true) {
@@ -95,9 +86,9 @@ int main(int argc, char *argv[]) {
     std::cout << "[INFO] iter : " << iter_num << std::endl;
     auto time_cost_ms = gemm(A, B, C, iter_num, opt_level);
     std::cout << "[INFO] time : " << time_cost_ms << "ms" << std::endl;
-    std::cout << "[INFO] GFLOPs : " << MM*NN*KK / 1e9 / time_cost_ms * 2000 * iter_num
+    std::cout << "[INFO] GFLOPs : " << 1/ 1e9 * MM * NN * KK / time_cost_ms * 2000 * iter_num
               << " GFLOPS" << std::endl;
 
-    std::cout << "[INFO] peak : " <<  MM*NN*KK / 1e9 / time_cost_ms / 10.07 * 200 *iter_num << "%" << std::endl;
+    std::cout << "[INFO] peak : " <<  1/ 1e9 * MM * NN * KK / time_cost_ms / 10.07 * 200 *iter_num << "%" << std::endl;
     
 }

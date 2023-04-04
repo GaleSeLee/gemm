@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <iostream>
 
-#define TPBX 16
-#define TPBY 16
+#define TPBX 32
+#define TPBY 32
 
 __global__
 void baseline_kernel(float *A, float *B, float *C, int M, int K, int N) {
