@@ -14,6 +14,9 @@ float gemm(float *A, float *B, float *C, int iter, int opt) {
         case 0:
             time_elapsed = opt0(dev_A, dev_B, dev_C, iter);
             break;
+        case -5:
+            time_elapsed = opt05(dev_A, dev_B, dev_C, iter);
+            break;
         case 1:
             time_elapsed = opt1(dev_A, dev_B, dev_C, iter);
             break;
