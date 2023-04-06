@@ -10,5 +10,6 @@ float opt0(float *, float *, float *, int iter);
 float opt05(float *, float *, float *, int iter);
 float opt1(float *, float *, float *, int iter);
 float opt2(float *, float *, float *, int iter);
+float opt3(float *, float *, float *, int iter);
 
 #endif
