@@ -36,6 +36,11 @@ void opt1_kernel(float *A, float *B, float *C, int M, int K, int N) {
         block_A[block_idx_x_1*32+block_idx_y] = A[global_idx_x_1 * K + block_idx_y + ii];
         block_A[block_idx_x_2*32+block_idx_y] = A[global_idx_x_2 * K + block_idx_y + ii];
         block_A[block_idx_x_3*32+block_idx_y] = A[global_idx_x_3 * K + block_idx_y + ii];
+        // tmp_00= A[global_idx_x_0 * K + block_idx_y + ii];
+        // tmp_10= A[global_idx_x_1 * K + block_idx_y + ii];
+        // tmp_20= A[global_idx_x_2 * K + block_idx_y + ii];
+        // tmp_30= A[global_idx_x_3 * K + block_idx_y + ii];
+        
         block_B[block_idx_x_0*32+block_idx_y] = B[global_idx_y + (block_idx_x_0 + ii) * N];
         block_B[block_idx_x_1*32+block_idx_y] = B[global_idx_y + (block_idx_x_1 + ii) * N];
         block_B[block_idx_x_2*32+block_idx_y] = B[global_idx_y + (block_idx_x_2 + ii) * N];
@@ -46,8 +51,25 @@ void opt1_kernel(float *A, float *B, float *C, int M, int K, int N) {
             tmp_10 +=  block_A[block_idx_x_1*32+kk] * block_B[kk*32+block_idx_y];
             tmp_20 +=  block_A[block_idx_x_2*32+kk] * block_B[kk*32+block_idx_y];
             tmp_30 +=  block_A[block_idx_x_3*32+kk] * block_B[kk*32+block_idx_y];
-        }
+        } 
         __syncthreads();
+        // block_A[block_idx_x_0+32*block_idx_y] = A[global_idx_x_0 * K + block_idx_y + ii];
+        // block_A[block_idx_x_1+32*block_idx_y] = A[global_idx_x_1 * K + block_idx_y + ii];
+        // block_A[block_idx_x_2+32*block_idx_y] = A[global_idx_x_2 * K + block_idx_y + ii];
+        // block_A[block_idx_x_3+32*block_idx_y] = A[global_idx_x_3 * K + block_idx_y + ii];
+
+        // block_B[block_idx_x_0*32+block_idx_y] = B[global_idx_y + (block_idx_x_0 + ii) * N];
+        // block_B[block_idx_x_1*32+block_idx_y] = B[global_idx_y + (block_idx_x_1 + ii) * N];
+        // block_B[block_idx_x_2*32+block_idx_y] = B[global_idx_y + (block_idx_x_2 + ii) * N];
+        // block_B[block_idx_x_3*32+block_idx_y] = B[global_idx_y + (block_idx_x_3 + ii) * N];
+        // __syncthreads();
+        // for (int kk = 0; kk < 32; kk++) {
+        //     tmp_00 +=  block_A[block_idx_x_0+32*kk] * block_B[kk*32+block_idx_y];
+        //     tmp_10 +=  block_A[block_idx_x_1+32*kk] * block_B[kk*32+block_idx_y];
+        //     tmp_20 +=  block_A[block_idx_x_2+32*kk] * block_B[kk*32+block_idx_y];
+        //     tmp_30 +=  block_A[block_idx_x_3+32*kk] * block_B[kk*32+block_idx_y];
+        // } 
+        // __syncthreads();
     }
     C[global_idx_c] = tmp_00;
     C[global_idx_c+N] = tmp_10;

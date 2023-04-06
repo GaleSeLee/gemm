@@ -19,8 +19,8 @@ int opt_level = -1;
 int iter_num = 10;
 
 void init(float *A, float *B) {
-    for(int ii = 0; ii < MM; ii++) {
-        for (int jj = 0; jj < KK; jj++) {
+    for(int ii = 0; ii < 64; ii++) {
+        for (int jj = 0; jj < 64; jj++) {
             float tmp = (float)(rand() % 5) + 0.01 * (rand() % 5);
             tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);
             A[ii*KK+jj] = tmp;
@@ -38,8 +38,8 @@ void init(float *A, float *B) {
 
 // ret, i, j
 tuple<bool, int, int> check_ret(float *C, float *C_ref) {
-    for (int ii = 0; ii < MM; ii++) {
-        for (int jj = 0; jj < NN; jj++) {
+    for (int ii = 0; ii < 64; ii++) {
+        for (int jj = 0; jj < 64; jj++) {
             if (fabs(C[ii*NN+jj] - C_ref[ii*NN+jj]) > 1e-2) {
                 return make_tuple(false, ii, jj);
             }
