@@ -95,6 +95,6 @@ int main(int argc, char *argv[]) {
     std::cout << "[INFO] GFLOPs : " << 1/ 1e9 * MM * NN * KK / time_cost_ms * 2000 * iter_num
               << " GFLOPS" << std::endl;
 
-    std::cout << "[INFO] peak : " <<  1/ 1e9 * MM * NN * KK / time_cost_ms / 13.45 * 200 *iter_num << "%" << std::endl;
+    std::cout << "[INFO] peak : " <<  1/ 1e9 * MM * NN * KK / time_cost_ms /6.451 * 200 *iter_num << "%" << std::endl;
     
 }
