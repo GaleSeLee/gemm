@@ -17,7 +17,7 @@ void baseline_kernel(float *A, float *B, float *C, int M, int K, int N) {
 
     C[idx] = 0;
     for (int kk = 0; kk < K; kk++) {
-        C[idx] += B[idx_x*K + kk] * A[idx_y + kk*N];
+        C[idx] += A[idx_x*K + kk] * B[idx_y + kk*N];
     }
 }
 

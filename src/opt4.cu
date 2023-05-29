@@ -41,40 +41,176 @@ void opt4_kernel(float *A, float *B, float *C, int M, int K, int N) {
     const int block_A_row_delta = global_C_row_delta - blockIdx.x * 128;
     const int block_B_col_base = global_C_col_base - blockIdx.y * 128;
     const int block_B_col_delta = global_C_col_delta - blockIdx.y * 128;
+    if (tx == 8) {
+        printf("A = %d %d %d %d\n", global_A_row, global_A_col, block_A_row_base, block_A_row_delta);
+        printf("block = %d %d\n", blockIdx.x, blockIdx.y);
+    }
     
     float a_frag[2][4];
     float b_frag[2][4];
-    float out_frag[2][4][4] = {0};
+    float out_frag[4][4][4];
+    for (int ii = 0; ii < 4; ii++) {
+        for (int jj = 0; jj < 4; jj++) {
+            for (int kk = 0; kk < 4; kk++)
+             out_frag[ii][jj][kk] = 0.0f;
+        }
+    }
     for (int ii = 0; ii < K; ii+=8) {
         // read A and B to shared memory
-        FETCH_FLOAT4(&block_A[tx*4]) = FETCH_FLOAT4(&A[global_A_row * K + global_A_col + ii]);
-        FETCH_FLOAT4(&block_B[tx*4]) = FETCH_FLOAT4(&B[(global_B_row + ii) * N + global_B_col]);
+        FETCH_FLOAT4(block_A[tx*4]) = FETCH_FLOAT4(A[global_A_row * K + global_A_col + ii]);
+        FETCH_FLOAT4(block_B[tx*4]) = FETCH_FLOAT4(B[(global_B_row + ii) * N + global_B_col]);
         __syncthreads();
         for (int jj = 0; jj < 8; jj++) {
             // read A and B 8*1 frag to registers
             // outer product and write to c register
-            a_frag[0][0] = block_A[block_A_row_base];
-            a_frag[0][1] = block_A[block_A_row_base+8];
-            a_frag[0][2] = block_A[block_A_row_base+16];
-            a_frag[0][3] = block_A[block_A_row_base+24];
-            a_frag[1][0] = block_A[block_A_row_delta];
-            a_frag[1][1] = block_A[block_A_row_delta+8];
-            a_frag[1][2] = block_A[block_A_row_delta+16];
-            a_frag[1][3] = block_A[block_A_row_delta+24];
-            b_frag[0][0] = block_B[block_B_col_base];
-            b_frag[0][1] = block_B[block_B_col_base+1];
-            b_frag[0][2] = block_B[block_B_col_base+2];
-            b_frag[0][3] = block_B[block_B_col_base+3];
-            b_frag[1][0] = block_B[block_B_col_delta];
-            b_frag[1][1] = block_B[block_B_col_delta+1];
-            b_frag[1][2] = block_B[block_B_col_delta+2];
-            b_frag[1][3] = block_B[block_B_col_delta+3];
+            a_frag[0][0] = block_A[jj + block_A_row_base];
+            a_frag[0][1] = block_A[jj + block_A_row_base+8];
+            a_frag[0][2] = block_A[jj + block_A_row_base+16];
+            a_frag[0][3] = block_A[jj + block_A_row_base+24];
+            a_frag[1][0] = block_A[jj + block_A_row_delta];
+            a_frag[1][1] = block_A[jj + block_A_row_delta+8];
+            a_frag[1][2] = block_A[jj + block_A_row_delta+16];
+            a_frag[1][3] = block_A[jj + block_A_row_delta+24];
+            b_frag[0][0] = block_B[jj*128+block_B_col_base];
+            b_frag[0][1] = block_B[jj*128+block_B_col_base+1];
+            b_frag[0][2] = block_B[jj*128+block_B_col_base+2];
+            b_frag[0][3] = block_B[jj*128+block_B_col_base+3];
+            b_frag[1][0] = block_B[jj*128+block_B_col_delta];
+            b_frag[1][1] = block_B[jj*128+block_B_col_delta+1];
+            b_frag[1][2] = block_B[jj*128+block_B_col_delta+2];
+            b_frag[1][3] = block_B[jj*128+block_B_col_delta+3];
+            out_frag[0][0][0] += a_frag[0][0] * b_frag[0][0];
+            out_frag[0][0][1] += a_frag[0][0] * b_frag[0][1];
+            out_frag[0][0][2] += a_frag[0][0] * b_frag[0][2];
+            out_frag[0][0][3] += a_frag[0][0] * b_frag[0][3];
+            out_frag[0][1][0] += a_frag[0][1] * b_frag[0][0];
+            out_frag[0][1][1] += a_frag[0][1] * b_frag[0][1];
+            out_frag[0][1][2] += a_frag[0][1] * b_frag[0][2];
+            out_frag[0][1][3] += a_frag[0][1] * b_frag[0][3];
+            out_frag[0][2][0] += a_frag[0][2] * b_frag[0][0];
+            out_frag[0][2][1] += a_frag[0][2] * b_frag[0][1];
+            out_frag[0][2][2] += a_frag[0][2] * b_frag[0][2];
+            out_frag[0][2][3] += a_frag[0][2] * b_frag[0][3];
+            out_frag[0][3][0] += a_frag[0][3] * b_frag[0][0];
+            out_frag[0][3][1] += a_frag[0][3] * b_frag[0][1];
+            out_frag[0][3][2] += a_frag[0][3] * b_frag[0][2];
+            out_frag[0][3][3] += a_frag[0][3] * b_frag[0][3];
+            out_frag[1][0][0] += a_frag[0][0] * b_frag[1][0];
+            out_frag[1][0][1] += a_frag[0][0] * b_frag[1][1];
+            out_frag[1][0][2] += a_frag[0][0] * b_frag[1][2];
+            out_frag[1][0][3] += a_frag[0][0] * b_frag[1][3];
+            out_frag[1][1][0] += a_frag[0][1] * b_frag[1][0];
+            out_frag[1][1][1] += a_frag[0][1] * b_frag[1][1];
+            out_frag[1][1][2] += a_frag[0][1] * b_frag[1][2];
+            out_frag[1][1][3] += a_frag[0][1] * b_frag[1][3];
+            out_frag[1][2][0] += a_frag[0][2] * b_frag[1][0];
+            out_frag[1][2][1] += a_frag[0][2] * b_frag[1][1];
+            out_frag[1][2][2] += a_frag[0][2] * b_frag[1][2];
+            out_frag[1][2][3] += a_frag[0][2] * b_frag[1][3];
+            out_frag[1][3][0] += a_frag[0][3] * b_frag[1][0];
+            out_frag[1][3][1] += a_frag[0][3] * b_frag[1][1];
+            out_frag[1][3][2] += a_frag[0][3] * b_frag[1][2];
+            out_frag[1][3][3] += a_frag[0][3] * b_frag[1][3];
+            out_frag[2][0][0] += a_frag[1][0] * b_frag[0][0];
+            out_frag[2][0][1] += a_frag[1][0] * b_frag[0][1];
+            out_frag[2][0][2] += a_frag[1][0] * b_frag[0][2];
+            out_frag[2][0][3] += a_frag[1][0] * b_frag[0][3];
+            out_frag[2][1][0] += a_frag[1][1] * b_frag[0][0];
+            out_frag[2][1][1] += a_frag[1][1] * b_frag[0][1];
+            out_frag[2][1][2] += a_frag[1][1] * b_frag[0][2];
+            out_frag[2][1][3] += a_frag[1][1] * b_frag[0][3];
+            out_frag[2][2][0] += a_frag[1][2] * b_frag[0][0];
+            out_frag[2][2][1] += a_frag[1][2] * b_frag[0][1];
+            out_frag[2][2][2] += a_frag[1][2] * b_frag[0][2];
+            out_frag[2][2][3] += a_frag[1][2] * b_frag[0][3];
+            out_frag[2][3][0] += a_frag[1][3] * b_frag[0][0];
+            out_frag[2][3][1] += a_frag[1][3] * b_frag[0][1];
+            out_frag[2][3][2] += a_frag[1][3] * b_frag[0][2];
+            out_frag[2][3][3] += a_frag[1][3] * b_frag[0][3];
+            out_frag[3][0][0] += a_frag[1][0] * b_frag[1][0];
+            out_frag[3][0][1] += a_frag[1][0] * b_frag[1][1];
+            out_frag[3][0][2] += a_frag[1][0] * b_frag[1][2];
+            out_frag[3][0][3] += a_frag[1][0] * b_frag[1][3];
+            out_frag[3][1][0] += a_frag[1][1] * b_frag[1][0];
+            out_frag[3][1][1] += a_frag[1][1] * b_frag[1][1];
+            out_frag[3][1][2] += a_frag[1][1] * b_frag[1][2];
+            out_frag[3][1][3] += a_frag[1][1] * b_frag[1][3];
+            out_frag[3][2][0] += a_frag[1][2] * b_frag[1][0];
+            out_frag[3][2][1] += a_frag[1][2] * b_frag[1][1];
+            out_frag[3][2][2] += a_frag[1][2] * b_frag[1][2];
+            out_frag[3][2][3] += a_frag[1][2] * b_frag[1][3];
+            out_frag[3][3][0] += a_frag[1][3] * b_frag[1][0];
+            out_frag[3][3][1] += a_frag[1][3] * b_frag[1][1];
+            out_frag[3][3][2] += a_frag[1][3] * b_frag[1][2];
+            out_frag[3][3][3] += a_frag[1][3] * b_frag[1][3];
         }
-
+        __syncthreads();
     }
-
     // write the c register to variable
-    
+	C[(global_C_row_base+0) * N + global_C_col_base + 0] = out_frag[0][0][0];
+	C[(global_C_row_base+0) * N + global_C_col_base + 1] = out_frag[0][0][1];
+	C[(global_C_row_base+0) * N + global_C_col_base + 2] = out_frag[0][0][2];
+	C[(global_C_row_base+0) * N + global_C_col_base + 3] = out_frag[0][0][3];
+	C[(global_C_row_base+1) * N + global_C_col_base + 0] = out_frag[0][1][0];
+	C[(global_C_row_base+1) * N + global_C_col_base + 1] = out_frag[0][1][1];
+	C[(global_C_row_base+1) * N + global_C_col_base + 2] = out_frag[0][1][2];
+	C[(global_C_row_base+1) * N + global_C_col_base + 3] = out_frag[0][1][3];
+	C[(global_C_row_base+2) * N + global_C_col_base + 0] = out_frag[0][2][0];
+	C[(global_C_row_base+2) * N + global_C_col_base + 1] = out_frag[0][2][1];
+	C[(global_C_row_base+2) * N + global_C_col_base + 2] = out_frag[0][2][2];
+	C[(global_C_row_base+2) * N + global_C_col_base + 3] = out_frag[0][2][3];
+	C[(global_C_row_base+3) * N + global_C_col_base + 0] = out_frag[0][3][0];
+	C[(global_C_row_base+3) * N + global_C_col_base + 1] = out_frag[0][3][1];
+	C[(global_C_row_base+3) * N + global_C_col_base + 2] = out_frag[0][3][2];
+	C[(global_C_row_base+3) * N + global_C_col_base + 3] = out_frag[0][3][3];
+	C[(global_C_row_base+0) * N + global_C_col_delta + 0] = out_frag[1][0][0];
+	C[(global_C_row_base+0) * N + global_C_col_delta + 1] = out_frag[1][0][1];
+	C[(global_C_row_base+0) * N + global_C_col_delta + 2] = out_frag[1][0][2];
+	C[(global_C_row_base+0) * N + global_C_col_delta + 3] = out_frag[1][0][3];
+	C[(global_C_row_base+1) * N + global_C_col_delta + 0] = out_frag[1][1][0];
+	C[(global_C_row_base+1) * N + global_C_col_delta + 1] = out_frag[1][1][1];
+	C[(global_C_row_base+1) * N + global_C_col_delta + 2] = out_frag[1][1][2];
+	C[(global_C_row_base+1) * N + global_C_col_delta + 3] = out_frag[1][1][3];
+	C[(global_C_row_base+2) * N + global_C_col_delta + 0] = out_frag[1][2][0];
+	C[(global_C_row_base+2) * N + global_C_col_delta + 1] = out_frag[1][2][1];
+	C[(global_C_row_base+2) * N + global_C_col_delta + 2] = out_frag[1][2][2];
+	C[(global_C_row_base+2) * N + global_C_col_delta + 3] = out_frag[1][2][3];
+	C[(global_C_row_base+3) * N + global_C_col_delta + 0] = out_frag[1][3][0];
+	C[(global_C_row_base+3) * N + global_C_col_delta + 1] = out_frag[1][3][1];
+	C[(global_C_row_base+3) * N + global_C_col_delta + 2] = out_frag[1][3][2];
+	C[(global_C_row_base+3) * N + global_C_col_delta + 3] = out_frag[1][3][3];
+	C[(global_C_row_delta+0) * N + global_C_col_base + 0] = out_frag[2][0][0];
+	C[(global_C_row_delta+0) * N + global_C_col_base + 1] = out_frag[2][0][1];
+	C[(global_C_row_delta+0) * N + global_C_col_base + 2] = out_frag[2][0][2];
+	C[(global_C_row_delta+0) * N + global_C_col_base + 3] = out_frag[2][0][3];
+	C[(global_C_row_delta+1) * N + global_C_col_base + 0] = out_frag[2][1][0];
+	C[(global_C_row_delta+1) * N + global_C_col_base + 1] = out_frag[2][1][1];
+	C[(global_C_row_delta+1) * N + global_C_col_base + 2] = out_frag[2][1][2];
+	C[(global_C_row_delta+1) * N + global_C_col_base + 3] = out_frag[2][1][3];
+	C[(global_C_row_delta+2) * N + global_C_col_base + 0] = out_frag[2][2][0];
+	C[(global_C_row_delta+2) * N + global_C_col_base + 1] = out_frag[2][2][1];
+	C[(global_C_row_delta+2) * N + global_C_col_base + 2] = out_frag[2][2][2];
+	C[(global_C_row_delta+2) * N + global_C_col_base + 3] = out_frag[2][2][3];
+	C[(global_C_row_delta+3) * N + global_C_col_base + 0] = out_frag[2][3][0];
+	C[(global_C_row_delta+3) * N + global_C_col_base + 1] = out_frag[2][3][1];
+	C[(global_C_row_delta+3) * N + global_C_col_base + 2] = out_frag[2][3][2];
+	C[(global_C_row_delta+3) * N + global_C_col_base + 3] = out_frag[2][3][3];
+	C[(global_C_row_delta+0) * N + global_C_col_delta + 0] = out_frag[3][0][0];
+	C[(global_C_row_delta+0) * N + global_C_col_delta + 1] = out_frag[3][0][1];
+	C[(global_C_row_delta+0) * N + global_C_col_delta + 2] = out_frag[3][0][2];
+	C[(global_C_row_delta+0) * N + global_C_col_delta + 3] = out_frag[3][0][3];
+	C[(global_C_row_delta+1) * N + global_C_col_delta + 0] = out_frag[3][1][0];
+	C[(global_C_row_delta+1) * N + global_C_col_delta + 1] = out_frag[3][1][1];
+	C[(global_C_row_delta+1) * N + global_C_col_delta + 2] = out_frag[3][1][2];
+	C[(global_C_row_delta+1) * N + global_C_col_delta + 3] = out_frag[3][1][3];
+	C[(global_C_row_delta+2) * N + global_C_col_delta + 0] = out_frag[3][2][0];
+	C[(global_C_row_delta+2) * N + global_C_col_delta + 1] = out_frag[3][2][1];
+	C[(global_C_row_delta+2) * N + global_C_col_delta + 2] = out_frag[3][2][2];
+	C[(global_C_row_delta+2) * N + global_C_col_delta + 3] = out_frag[3][2][3];
+	C[(global_C_row_delta+3) * N + global_C_col_delta + 0] = out_frag[3][3][0];
+	C[(global_C_row_delta+3) * N + global_C_col_delta + 1] = out_frag[3][3][1];
+	C[(global_C_row_delta+3) * N + global_C_col_delta + 2] = out_frag[3][3][2];
+	C[(global_C_row_delta+3) * N + global_C_col_delta + 3] = out_frag[3][3][3];
 }
 
 float opt4(float *A, float *B, float *C, int iter) {
