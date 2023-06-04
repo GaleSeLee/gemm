@@ -22,7 +22,7 @@ void init(float *A, float *B) {
     for(int ii = 0; ii < MM; ii++) {
         for (int jj = 0; jj < KK; jj++) {
             float tmp = (float)(rand() % 5) + 0.01 * (rand() % 5);
-            tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);
+            tmp = ii;//(rand() % 2 == 0) ? tmp : tmp * (-1.);
             A[ii*KK+jj] = tmp;
         }
     }
@@ -30,7 +30,7 @@ void init(float *A, float *B) {
     for(int ii = 0; ii < KK; ii++) {
         for (int jj = 0; jj < NN; jj++) {
             float tmp = (float)(rand() % 5) + 0.01 * (rand() % 5);
-            tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);
+            tmp = 1.0;//(rand() % 2 == 0) ? tmp : tmp * (-1.);
             B[ii*NN+jj] = tmp;
         }
     }
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
     if (err != true) {
         std::cout << "[Error] C[ii][jj](" << C[err_ii*NN+err_jj] << ")" <<
          "!= C_ref[ii][jj](" << C_ref[err_ii*NN+err_jj] << "), while ii = " << 
-         err_ii << ", jj = " << err_jj << std::endl;
+         err_ii << ", jj = " << err_jj << ", idx = " << err_ii * NN + err_jj<< std::endl;
 
          //exit(1);
     } else {

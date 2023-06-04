@@ -41,10 +41,10 @@ void opt4_kernel(float *A, float *B, float *C, int M, int K, int N) {
     const int block_A_row_delta = global_C_row_delta - blockIdx.x * 128;
     const int block_B_col_base = global_C_col_base - blockIdx.y * 128;
     const int block_B_col_delta = global_C_col_delta - blockIdx.y * 128;
-    if (tx == 8) {
-        printf("A = %d %d %d %d\n", global_A_row, global_A_col, block_A_row_base, block_A_row_delta);
-        printf("block = %d %d\n", blockIdx.x, blockIdx.y);
-    }
+    // if (tx == 8) {
+    //     printf("A = %d %d %d %d\n", global_A_row, global_A_col, block_A_row_base, block_A_row_delta);
+    //     printf("block = %d %d\n", blockIdx.x, blockIdx.y);
+    // }
     
     float a_frag[2][4];
     float b_frag[2][4];
@@ -60,17 +60,28 @@ void opt4_kernel(float *A, float *B, float *C, int M, int K, int N) {
         FETCH_FLOAT4(block_A[tx*4]) = FETCH_FLOAT4(A[global_A_row * K + global_A_col + ii]);
         FETCH_FLOAT4(block_B[tx*4]) = FETCH_FLOAT4(B[(global_B_row + ii) * N + global_B_col]);
         __syncthreads();
+        int tmp_base = block_A_row_base * 8;
+        int tmp_delta = block_A_row_delta * 8;
+        #pragma unroll
         for (int jj = 0; jj < 8; jj++) {
             // read A and B 8*1 frag to registers
             // outer product and write to c register
-            a_frag[0][0] = block_A[jj + block_A_row_base];
-            a_frag[0][1] = block_A[jj + block_A_row_base+8];
-            a_frag[0][2] = block_A[jj + block_A_row_base+16];
-            a_frag[0][3] = block_A[jj + block_A_row_base+24];
-            a_frag[1][0] = block_A[jj + block_A_row_delta];
-            a_frag[1][1] = block_A[jj + block_A_row_delta+8];
-            a_frag[1][2] = block_A[jj + block_A_row_delta+16];
-            a_frag[1][3] = block_A[jj + block_A_row_delta+24];
+            a_frag[0][0] = block_A[jj + tmp_base];
+            a_frag[0][1] = block_A[jj + tmp_base+8];
+            a_frag[0][2] = block_A[jj + tmp_base+16];
+            a_frag[0][3] = block_A[jj + tmp_base+24];
+            a_frag[1][0] = block_A[jj + tmp_delta];
+            a_frag[1][1] = block_A[jj + tmp_delta+8];
+            a_frag[1][2] = block_A[jj + tmp_delta+16];
+            a_frag[1][3] = block_A[jj + tmp_delta+24];
+            // if (tx == 8) {
+            //     printf("tx == 8 value = %f, %f, %f, %f, block_A_id = %d \n", a_frag[0][0], a_frag[0][1],
+            //            a_frag[0][2], a_frag[0][3], block_A_row_base + jj);
+            // }
+            // if (tx == 0) {
+            //     printf("tx == 0 value = %f, %f, %f, %f\n", a_frag[0][0], a_frag[0][1],
+            //            a_frag[0][2], a_frag[0][3]);
+            // }
             b_frag[0][0] = block_B[jj*128+block_B_col_base];
             b_frag[0][1] = block_B[jj*128+block_B_col_base+1];
             b_frag[0][2] = block_B[jj*128+block_B_col_base+2];
@@ -147,6 +158,10 @@ void opt4_kernel(float *A, float *B, float *C, int M, int K, int N) {
         __syncthreads();
     }
     // write the c register to variable
+    // if (tx == 8) {
+    //     printf("C idx = %d\n", global_C_row_base * N +global_C_col_base);
+    //     printf("value = %f\n", out_frag[0][0][0]);
+    // }
 	C[(global_C_row_base+0) * N + global_C_col_base + 0] = out_frag[0][0][0];
 	C[(global_C_row_base+0) * N + global_C_col_base + 1] = out_frag[0][0][1];
 	C[(global_C_row_base+0) * N + global_C_col_base + 2] = out_frag[0][0][2];
