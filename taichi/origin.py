@@ -27,6 +27,10 @@ def ref_sgemm(M:int, N:int, K:int,
 def verify_matrix(a, b):
     if a.shape != b.shape:
        return False
+    for i in range(128):
+      for j in range(4):
+        if a[i][j] != b[i][j]:
+          print(f"{i}, {j}: {a[i][j]}, {b[i][j]}")
     is_all_close = np.allclose(a, b, rtol=1e-5, atol=1e-08)
     if is_all_close:
        return True
@@ -265,15 +269,256 @@ def sgemm_v4(M:int, N:int, K:int,
         C[row_ptr + row_c+3,col_ptr + col_c+3]   = alpha * Cres_3[3] + beta * C[row_ptr + row_c+3, col_ptr + col_c+3]
 
 
+block_dim_x = 16
+block_dim_y = 16
+element_per_thread_x = 8
+element_per_thread_y = 8
+block_size = 16 * 16
+@ti.kernel
+def sgemm_128_128_kernel(M:int, N:int, K:int, 
+             alpha:float, A: arr_type,
+             beta:float,  B:arr_type,
+             C: arr_type):
+  # 128 times 128 currently
+  row_grid = M // (block_dim_x * 8)
+  col_grid = N // (block_dim_y * 8)
+  total_block = row_grid * col_grid
+  ti.loop_config(block_dim=block_size)
+  for i, j in ti.ndrange(M // 8, N // 8):
+    g_tid = ti.simt.block.global_thread_idx()
+    tid = g_tid % (block_size)
+    warp_id = tid >> 5
+    warp_row = warp_id >> 1
+    warp_col = warp_id & 1
+    lane_id = tid & 31
+
+    block_id = g_tid // block_size
+    block_idx = block_id % col_grid
+    block_idy = block_id // col_grid
+
+    global_A_row = tid >> 1 + block_idx * 128
+    global_A_col = (tid & 1) << 2
+    global_B_row = warp_id
+    global_B_col = block_idy * 128 + lane_id * 4
+
+    global_C_row_base = block_idx * 128 + warp_row * 32 + lane_id // 8 * 4
+    global_C_col_base = block_idy * 128 + warp_col * 64 + lane_id % 8 * 4
+    global_C_row_delta = global_C_row_base + 16
+    global_C_col_delta = global_C_col_base + 32
+
+    block_A_row_base = global_C_row_base - block_idx * 128
+    block_A_row_delta = global_C_row_delta - block_idx * 128
+    block_B_col_base = global_C_col_base - block_idy * 128
+    block_B_col_delta = global_C_col_delta - block_idy * 128
+
+    block_A = ti.simt.block.SharedArray((1024, ), ti.f32)
+    block_B = ti.simt.block.SharedArray((1024, ), ti.f32)
+    a_frag_0 = ti.math.vec4(0., 0., 0., 0.)
+    a_frag_1 = ti.math.vec4(0., 0., 0., 0.)
+    b_frag_0 = ti.math.vec4(0., 0., 0., 0.)
+    b_frag_1 = ti.math.vec4(0., 0., 0., 0.)
+
+    c_frag_0_0 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_0_1 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_0_2 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_0_3 = ti.math.vec4(0., 0., 0., 0.)
+
+    c_frag_1_0 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_1_1 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_1_2 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_1_3 = ti.math.vec4(0., 0., 0., 0.)
+
+    c_frag_2_0 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_2_1 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_2_2 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_2_3 = ti.math.vec4(0., 0., 0., 0.)
+
+    c_frag_3_0 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_3_1 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_3_2 = ti.math.vec4(0., 0., 0., 0.)
+    c_frag_3_3 = ti.math.vec4(0., 0., 0., 0.)
+
+    for kk in range(K // 8):
+      ii = kk * 8
+      block_A[tid*4] = A[global_A_row, global_A_col + ii]
+      block_A[tid*4+1] = A[global_A_row, global_A_col + ii + 1]
+      block_A[tid*4+2] = A[global_A_row, global_A_col + ii + 2]
+      block_A[tid*4+3] = A[global_A_row, global_A_col + ii + 3]
+
+      block_B[tid*4] = B[global_B_row+ii, global_B_col]
+      block_B[tid*4+1] = B[global_B_row+ii, global_B_col+1]
+      block_B[tid*4+2] = B[global_B_row+ii, global_B_col+2]
+      block_B[tid*4+3] = B[global_B_row+ii, global_B_col+3]
+      ti.simt.block.sync()
+
+      #if tid*4 + 3 == 903:
+      #  print("xidx = ", global_B_row+ii+3, global_B_col, ii, global_B_row)
+
+      block_A_base_id = block_A_row_base * 8
+      block_A_delta_id = block_A_row_delta * 8
+
+      # how to unroll
+      for jj in ti.static(range(8)):
+        a_frag_0[0] = block_A[block_A_base_id+jj]
+        a_frag_0[1] = block_A[block_A_base_id+jj+8]
+        a_frag_0[2] = block_A[block_A_base_id+jj+16]
+        a_frag_0[3] = block_A[block_A_base_id+jj+24]
+        a_frag_1[0] = block_A[block_A_delta_id+jj]
+        a_frag_1[1] = block_A[block_A_delta_id+jj+8]
+        a_frag_1[2] = block_A[block_A_delta_id+jj+16]
+        a_frag_1[3] = block_A[block_A_delta_id+jj+24]
+
+        b_frag_0[0] = block_B[jj*128 + block_B_col_base]
+        b_frag_0[1] = block_B[jj*128 + block_B_col_base+1]
+        b_frag_0[2] = block_B[jj*128 + block_B_col_base+2]
+        b_frag_0[3] = block_B[jj*128 + block_B_col_base+3]
+        b_frag_1[0] = block_B[jj*128 + block_B_col_delta]
+        b_frag_1[1] = block_B[jj*128 + block_B_col_delta+1]
+        b_frag_1[2] = block_B[jj*128 + block_B_col_delta+2]
+        b_frag_1[3] = block_B[jj*128 + block_B_col_delta+3]
+      
+
+        c_frag_0_0[0] += a_frag_0[0] * b_frag_0[0]
+        c_frag_0_0[1] += a_frag_0[0] * b_frag_0[1]
+        c_frag_0_0[2] += a_frag_0[0] * b_frag_0[2]
+        c_frag_0_0[3] += a_frag_0[0] * b_frag_0[3]
+        c_frag_0_1[0] += a_frag_0[1] * b_frag_0[0]
+        c_frag_0_1[1] += a_frag_0[1] * b_frag_0[1]
+        c_frag_0_1[2] += a_frag_0[1] * b_frag_0[2]
+        c_frag_0_1[3] += a_frag_0[1] * b_frag_0[3]
+        c_frag_0_2[0] += a_frag_0[2] * b_frag_0[0]
+        c_frag_0_2[1] += a_frag_0[2] * b_frag_0[1]
+        c_frag_0_2[2] += a_frag_0[2] * b_frag_0[2]
+        c_frag_0_2[3] += a_frag_0[2] * b_frag_0[3]
+        c_frag_0_3[0] += a_frag_0[3] * b_frag_0[0]
+        c_frag_0_3[1] += a_frag_0[3] * b_frag_0[1]
+        c_frag_0_3[2] += a_frag_0[3] * b_frag_0[2]
+        c_frag_0_3[3] += a_frag_0[3] * b_frag_0[3]
+        c_frag_1_0[0] += a_frag_0[0] * b_frag_1[0]
+        c_frag_1_0[1] += a_frag_0[0] * b_frag_1[1]
+        c_frag_1_0[2] += a_frag_0[0] * b_frag_1[2]
+        c_frag_1_0[3] += a_frag_0[0] * b_frag_1[3]
+        c_frag_1_1[0] += a_frag_0[1] * b_frag_1[0]
+        c_frag_1_1[1] += a_frag_0[1] * b_frag_1[1]
+        c_frag_1_1[2] += a_frag_0[1] * b_frag_1[2]
+        c_frag_1_1[3] += a_frag_0[1] * b_frag_1[3]
+        c_frag_1_2[0] += a_frag_0[2] * b_frag_1[0]
+        c_frag_1_2[1] += a_frag_0[2] * b_frag_1[1]
+        c_frag_1_2[2] += a_frag_0[2] * b_frag_1[2]
+        c_frag_1_2[3] += a_frag_0[2] * b_frag_1[3]
+        c_frag_1_3[0] += a_frag_0[3] * b_frag_1[0]
+        c_frag_1_3[1] += a_frag_0[3] * b_frag_1[1]
+        c_frag_1_3[2] += a_frag_0[3] * b_frag_1[2]
+        c_frag_1_3[3] += a_frag_0[3] * b_frag_1[3]
+        c_frag_2_0[0] += a_frag_1[0] * b_frag_0[0]
+        c_frag_2_0[1] += a_frag_1[0] * b_frag_0[1]
+        c_frag_2_0[2] += a_frag_1[0] * b_frag_0[2]
+        c_frag_2_0[3] += a_frag_1[0] * b_frag_0[3]
+        c_frag_2_1[0] += a_frag_1[1] * b_frag_0[0]
+        c_frag_2_1[1] += a_frag_1[1] * b_frag_0[1]
+        c_frag_2_1[2] += a_frag_1[1] * b_frag_0[2]
+        c_frag_2_1[3] += a_frag_1[1] * b_frag_0[3]
+        c_frag_2_2[0] += a_frag_1[2] * b_frag_0[0]
+        c_frag_2_2[1] += a_frag_1[2] * b_frag_0[1]
+        c_frag_2_2[2] += a_frag_1[2] * b_frag_0[2]
+        c_frag_2_2[3] += a_frag_1[2] * b_frag_0[3]
+        c_frag_2_3[0] += a_frag_1[3] * b_frag_0[0]
+        c_frag_2_3[1] += a_frag_1[3] * b_frag_0[1]
+        c_frag_2_3[2] += a_frag_1[3] * b_frag_0[2]
+        c_frag_2_3[3] += a_frag_1[3] * b_frag_0[3]
+        c_frag_3_0[0] += a_frag_1[0] * b_frag_1[0]
+        c_frag_3_0[1] += a_frag_1[0] * b_frag_1[1]
+        c_frag_3_0[2] += a_frag_1[0] * b_frag_1[2]
+        c_frag_3_0[3] += a_frag_1[0] * b_frag_1[3]
+        c_frag_3_1[0] += a_frag_1[1] * b_frag_1[0]
+        c_frag_3_1[1] += a_frag_1[1] * b_frag_1[1]
+        c_frag_3_1[2] += a_frag_1[1] * b_frag_1[2]
+        c_frag_3_1[3] += a_frag_1[1] * b_frag_1[3]
+        c_frag_3_2[0] += a_frag_1[2] * b_frag_1[0]
+        c_frag_3_2[1] += a_frag_1[2] * b_frag_1[1]
+        c_frag_3_2[2] += a_frag_1[2] * b_frag_1[2]
+        c_frag_3_2[3] += a_frag_1[2] * b_frag_1[3]
+        c_frag_3_3[0] += a_frag_1[3] * b_frag_1[0]
+        c_frag_3_3[1] += a_frag_1[3] * b_frag_1[1]
+        c_frag_3_3[2] += a_frag_1[3] * b_frag_1[2]
+        c_frag_3_3[3] += a_frag_1[3] * b_frag_1[3]
+        
+
+      ti.simt.block.sync()
+    C[global_C_row_base+0, global_C_col_base+0] = c_frag_0_0[0]
+    C[global_C_row_base+0, global_C_col_base+1] = c_frag_0_0[1]
+    C[global_C_row_base+0, global_C_col_base+2] = c_frag_0_0[2]
+    C[global_C_row_base+0, global_C_col_base+3] = c_frag_0_0[3]
+    C[global_C_row_base+1, global_C_col_base+0] = c_frag_0_1[0]
+    C[global_C_row_base+1, global_C_col_base+1] = c_frag_0_1[1]
+    C[global_C_row_base+1, global_C_col_base+2] = c_frag_0_1[2]
+    C[global_C_row_base+1, global_C_col_base+3] = c_frag_0_1[3]
+    C[global_C_row_base+2, global_C_col_base+0] = c_frag_0_2[0]
+    C[global_C_row_base+2, global_C_col_base+1] = c_frag_0_2[1]
+    C[global_C_row_base+2, global_C_col_base+2] = c_frag_0_2[2]
+    C[global_C_row_base+2, global_C_col_base+3] = c_frag_0_2[3]
+    C[global_C_row_base+3, global_C_col_base+0] = c_frag_0_3[0]
+    C[global_C_row_base+3, global_C_col_base+1] = c_frag_0_3[1]
+    C[global_C_row_base+3, global_C_col_base+2] = c_frag_0_3[2]
+    C[global_C_row_base+3, global_C_col_base+3] = c_frag_0_3[3]
+    C[global_C_row_base+0, global_C_col_delta+0] = c_frag_1_0[0]
+    C[global_C_row_base+0, global_C_col_delta+1] = c_frag_1_0[1]
+    C[global_C_row_base+0, global_C_col_delta+2] = c_frag_1_0[2]
+    C[global_C_row_base+0, global_C_col_delta+3] = c_frag_1_0[3]
+    C[global_C_row_base+1, global_C_col_delta+0] = c_frag_1_1[0]
+    C[global_C_row_base+1, global_C_col_delta+1] = c_frag_1_1[1]
+    C[global_C_row_base+1, global_C_col_delta+2] = c_frag_1_1[2]
+    C[global_C_row_base+1, global_C_col_delta+3] = c_frag_1_1[3]
+    C[global_C_row_base+2, global_C_col_delta+0] = c_frag_1_2[0]
+    C[global_C_row_base+2, global_C_col_delta+1] = c_frag_1_2[1]
+    C[global_C_row_base+2, global_C_col_delta+2] = c_frag_1_2[2]
+    C[global_C_row_base+2, global_C_col_delta+3] = c_frag_1_2[3]
+    C[global_C_row_base+3, global_C_col_delta+0] = c_frag_1_3[0]
+    C[global_C_row_base+3, global_C_col_delta+1] = c_frag_1_3[1]
+    C[global_C_row_base+3, global_C_col_delta+2] = c_frag_1_3[2]
+    C[global_C_row_base+3, global_C_col_delta+3] = c_frag_1_3[3]
+    C[global_C_row_delta+0, global_C_col_base+0] = c_frag_2_0[0]
+    C[global_C_row_delta+0, global_C_col_base+1] = c_frag_2_0[1]
+    C[global_C_row_delta+0, global_C_col_base+2] = c_frag_2_0[2]
+    C[global_C_row_delta+0, global_C_col_base+3] = c_frag_2_0[3]
+    C[global_C_row_delta+1, global_C_col_base+0] = c_frag_2_1[0]
+    C[global_C_row_delta+1, global_C_col_base+1] = c_frag_2_1[1]
+    C[global_C_row_delta+1, global_C_col_base+2] = c_frag_2_1[2]
+    C[global_C_row_delta+1, global_C_col_base+3] = c_frag_2_1[3]
+    C[global_C_row_delta+2, global_C_col_base+0] = c_frag_2_2[0]
+    C[global_C_row_delta+2, global_C_col_base+1] = c_frag_2_2[1]
+    C[global_C_row_delta+2, global_C_col_base+2] = c_frag_2_2[2]
+    C[global_C_row_delta+2, global_C_col_base+3] = c_frag_2_2[3]
+    C[global_C_row_delta+3, global_C_col_base+0] = c_frag_2_3[0]
+    C[global_C_row_delta+3, global_C_col_base+1] = c_frag_2_3[1]
+    C[global_C_row_delta+3, global_C_col_base+2] = c_frag_2_3[2]
+    C[global_C_row_delta+3, global_C_col_base+3] = c_frag_2_3[3]
+    C[global_C_row_delta+0, global_C_col_delta+0] = c_frag_3_0[0]
+    C[global_C_row_delta+0, global_C_col_delta+1] = c_frag_3_0[1]
+    C[global_C_row_delta+0, global_C_col_delta+2] = c_frag_3_0[2]
+    C[global_C_row_delta+0, global_C_col_delta+3] = c_frag_3_0[3]
+    C[global_C_row_delta+1, global_C_col_delta+0] = c_frag_3_1[0]
+    C[global_C_row_delta+1, global_C_col_delta+1] = c_frag_3_1[1]
+    C[global_C_row_delta+1, global_C_col_delta+2] = c_frag_3_1[2]
+    C[global_C_row_delta+1, global_C_col_delta+3] = c_frag_3_1[3]
+    C[global_C_row_delta+2, global_C_col_delta+0] = c_frag_3_2[0]
+    C[global_C_row_delta+2, global_C_col_delta+1] = c_frag_3_2[1]
+    C[global_C_row_delta+2, global_C_col_delta+2] = c_frag_3_2[2]
+    C[global_C_row_delta+2, global_C_col_delta+3] = c_frag_3_2[3]
+    C[global_C_row_delta+3, global_C_col_delta+0] = c_frag_3_3[0]
+    C[global_C_row_delta+3, global_C_col_delta+1] = c_frag_3_3[1]
+    C[global_C_row_delta+3, global_C_col_delta+2] = c_frag_3_3[2]
+    C[global_C_row_delta+3, global_C_col_delta+3] = c_frag_3_3[3]
+    
 class Gemm:
-   
    name = 'gemm'
    size = [(i+1) << 8 for i in range(24)]
    gemm_kernel_switcher = {
            1: sgemm_v1,
            2: sgemm_v2,
            3: sgemm_v3,
-           4: sgemm_v4
+           4: sgemm_v4,
+           5: sgemm_128_128_kernel
         }
    
 
@@ -329,6 +574,7 @@ class Gemm:
          print("not compute right!!!")
          exit(-1)
       repeats = 100
+      ti.profiler.clear_kernel_profiler_info()
       for _ in range(repeats):
           func(m,n,k, alpha, A, beta, B, C)
       query_result = ti.profiler.query_kernel_profiler_info(func.__name__)
