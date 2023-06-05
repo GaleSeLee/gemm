@@ -4,6 +4,8 @@ find_package(CUDA REQUIRED)
 
 file (GLOB SOURCE_FILES "*.cu" )
 
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_75")
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --ptxas-options=-v")
 cuda_add_library(mygemm SHARED ${SOURCE_FILES})
 
 set_property(
